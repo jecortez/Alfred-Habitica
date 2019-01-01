@@ -10,6 +10,7 @@ import codecs
 from requests.auth import AuthBase
 import xml.etree.ElementTree as et
 import json
+from uuid import UUID
 
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -37,10 +38,42 @@ api_token = config.get('auth', 'api_token')
 api = slumber.API('https://habitica.com/api/v3', auth=HabiticaAuth(user_id, api_token))
 
 
+def __is_valid_uuid(uuid_to_test, version=4):
+    """
+    Check if uuid_to_test is a valid UUID.
+
+    Parameters
+    ----------
+    uuid_to_test : str
+    version : {1, 2, 3, 4}
+
+    Returns
+    -------
+    `True` if uuid_to_test is a valid UUID, otherwise `False`.
+    """
+    try:
+        uuid_obj = UUID(uuid_to_test, version=version)
+    except:
+        return False
+
+    return str(uuid_obj) == uuid_to_test
+
+
 def report_habit(args):
     ''' Report good or bad behavior for a habit. '''
     direction = "up" if args.up else "down"
-    print(api.tasks(args.habit_id)('score')(direction).post())
+    if __is_valid_uuid(args.habit_id):
+        print(api.tasks(args.habit_id)('score')(direction).post())
+    else:
+        print(api.tasks.user.post({'type': 'habit', 'text': args.habit_id}))
+
+
+def report_todo(args):
+    ''' Mark a todo as complete or create a new one '''
+    if __is_valid_uuid(args.todo_id):
+        print(api.tasks(args.todo_id)('score')('up').post())
+    else:
+        print(api.tasks.user.post({'type': 'todo', 'text': args.todo_id}))
 
 
 def refresh_tasks(args):
@@ -53,10 +86,30 @@ def refresh_tasks(args):
         tasks_json.append({
             'text': task['text'],
             'id': task['id'],
+            'type': task['type']
         })
 
     with codecs.open(TASKS_FILENAME, 'w', encoding='utf8') as tasks_file:
         json.dump(tasks_json, tasks_file, indent=2)
+
+
+def __filter_tasks(task_list, task_type):
+    filter_key = ''
+    if task_type == 'todo':
+        filter_key = 'todo'
+    else:
+        filter_key = 'habit'
+    filtered_tasks = [task for task in task_list if task['type'].lower() == filter_key]
+    return filtered_tasks
+
+
+def __get_subtitle_text(task_type):
+    if task_type == 'good':
+        return "Nice job!  Report this Good Habit."
+    elif task_type == 'bad':
+        return "Report this Bad Habit."
+    elif task_type == 'todo':
+        return "Add an item to your Todo list."
 
 
 def autocomplete(args):
@@ -64,12 +117,10 @@ def autocomplete(args):
 
     # Read tasks from local file
     with codecs.open(TASKS_FILENAME, encoding='utf8') as tasks_file:
-        task_list = json.load(tasks_file)
+        task_list = __filter_tasks(json.load(tasks_file), args.task_type)
 
     # Determine subtitle task based on whether this is a good habit or bad habit
-    subtitle_text = "Nice job!  Report this Good Habit." if args.task_type == 'good'\
-        else "Report this Bad Habit." if args.task_type == 'bad'\
-        else ""
+    subtitle_text = __get_subtitle_text(args.task_type)
 
     # Create an autcomplete 'item' for each task matched
     items = et.Element('items')
@@ -102,7 +153,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Log habit activity.")
     subparsers = parser.add_subparsers(help="sub-commands for interfacing with Habitica")
 
-    report_subparser = subparsers.add_parser('report', help="Report habit behavior")
+    report_subparser = subparsers.add_parser('report_habit', help="Report habit behavior")
     report_subparser.add_argument('habit_id', help="The ID of a habit to report.")
     report_subparser.set_defaults(func=report_habit)
     report_subparser.add_argument(
@@ -110,6 +161,10 @@ if __name__ == '__main__':
         action='store_true',
         help="If this is a positive habit (default is false)."
     )
+
+    report_todo_subparser = subparsers.add_parser('report_todo', help="Report TODO behavior")
+    report_todo_subparser.add_argument('todo_id', help="The ID of a todo to report.")
+    report_todo_subparser.set_defaults(func=report_todo)
 
     refresh_subparser = subparsers.add_parser(
         'refresh',
