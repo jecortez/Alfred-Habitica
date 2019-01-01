@@ -47,6 +47,14 @@ To report Bad Habits, use the `hab bad` key command:
 
 It is symmetric to `hab good` in that it also supports auto complete and creating new habits.
 
+To add to your todo list, use the `hab todo` key command.
+
+<img src="doc/hab_todo_add.png" width="550px"/>
+
+You can also check off existing todo list items by searching for an existing item, and selecting it.
+
+<img src="doc/hab_todo_clear.png" width="550px"/>
+
 ## Keeping habit list up to date
 
 The autocomplete habits will get stale after you change habits in the online interface or create new ones through key commands.
